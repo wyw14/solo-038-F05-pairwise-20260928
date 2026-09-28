@@ -11,6 +11,9 @@ func RequireReady(state *State, colors ...string) error {
 	return nil
 }
 
+// ActiveCircuitReady reports whether a circuit may be used for printing.
+// An open valve alone is not enough: the circuit must also carry the
+// printable qualification granted by a confirmed cleaning session.
 func ActiveCircuitReady(state *State, color string) bool {
-	return state.Get(color) == CircuitOpen
+	return state.Get(color) == CircuitOpen && state.Printable(color)
 }

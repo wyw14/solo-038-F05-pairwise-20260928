@@ -206,17 +206,17 @@ func (runtime *Runtime) switchInkOperation(withFault bool) error {
 		}
 		active = "cyan"
 	}
-	if withFault {
-		circuit := ink.NewCircuit(runtime.ink)
-		circuit.FailDrain(active, fmt.Errorf("drain isolation signal failed"))
-		runtime.RecordIncident("warning", "ink", "drain isolation signal failed")
-		return nil
-	}
 	next := "magenta"
 	if active == next {
 		next = "cyan"
 	}
+	if withFault {
+		runtime.inkControl.FailMeasure(next, fmt.Errorf("outlet residual sensor signal lost"))
+		runtime.RecordIncident("warning", "ink", "outlet residual measurement will be interrupted")
+		return nil
+	}
 	if _, err := runtime.inkControl.SwitchColor(next); err != nil {
+		runtime.RecordIncident("warning", "ink", err.Error())
 		return err
 	}
 	if err := runtime.press.SetColor(next); err != nil {

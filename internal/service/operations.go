@@ -46,9 +46,25 @@ func (runtime *Runtime) Equipment() []map[string]any {
 		{"name": "press", "plate": plate, "generation": plateGeneration, "color": color, "phases": phases},
 		{"name": "dryer", "state": runtime.dryerControlStatus()},
 		{"name": "folder", "ready": ready, "speed": folderSpeed, "cut_length": cutLength, "fault": fault, "lots": lots},
+		{"name": "ink", "active": runtime.inkControl.Active(), "cleaning": runtime.inkCleaningStatus()},
 	}
 	sort.Slice(values, func(left, right int) bool { return values[left]["name"].(string) < values[right]["name"].(string) })
 	return values
+}
+
+func (runtime *Runtime) inkCleaningStatus() map[string]any {
+	active := runtime.inkControl.Active()
+	status := map[string]any{"printable": active != "" && runtime.ink.Printable(active)}
+	if active != "" {
+		if session, ok := runtime.inkControl.CleaningSession(active); ok {
+			status["cycles"] = session.Cycles
+			status["clean_streak"] = session.CleanStreak
+			status["required_streak"] = session.RequiredStreak
+			status["confirmed"] = session.Confirmed
+			status["paused"] = session.Paused
+		}
+	}
+	return status
 }
 
 func (runtime *Runtime) dryerControlStatus() map[string]any {
