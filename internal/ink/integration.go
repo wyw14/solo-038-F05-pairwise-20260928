@@ -11,6 +11,12 @@ func RequireReady(state *State, colors ...string) error {
 	return nil
 }
 
+// ActiveCircuitReady 判定回路是否可印：阀门打开不算数，
+// 必须冲洗确认完成（状态 ready 且本次清洗记录已确认）。
 func ActiveCircuitReady(state *State, color string) bool {
-	return state.Get(color) == CircuitOpen
+	if state.Get(color) != CircuitReady {
+		return false
+	}
+	record, ok := state.FlushRecord(color)
+	return ok && record.Confirmed
 }

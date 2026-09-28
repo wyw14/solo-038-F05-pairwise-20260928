@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"path/filepath"
 	"time"
 
@@ -55,6 +56,8 @@ func (runtime *Runtime) ExecuteOperation(ctx context.Context, kind string) error
 		return runtime.switchInkOperation(false)
 	case "ink_fault":
 		return runtime.switchInkOperation(true)
+	case "ink_flush_fault":
+		return runtime.inkFlushFaultOperation()
 	case "start_dryer":
 		return runtime.startDryerOperation(ctx, current)
 	case "release_interval":
@@ -212,6 +215,48 @@ func (runtime *Runtime) switchInkOperation(withFault bool) error {
 		runtime.RecordIncident("warning", "ink", "drain isolation signal failed")
 		return nil
 	}
+	previous := active
+	// 当前回路有未确认的清洗记录（中途暂停或测量中断）时继续沿用，不重新换色开路。
+	record, resuming := runtime.inkControl.FlushStatus()
+	resuming = resuming && !record.Confirmed
+	if !resuming {
+		next := "magenta"
+		if active == next {
+			next = "cyan"
+		}
+		if _, err := runtime.inkControl.SwitchColor(next); err != nil {
+			return err
+		}
+		active = next
+	}
+	// 阀门打开不代表新墨可用：冲洗回路并实测出口残色，连续达标才标记可印。
+	if err := runtime.flushInkCircuit(); err != nil {
+		return err
+	}
+	if err := runtime.press.SetColor(active); err != nil {
+		return err
+	}
+	colors := runtime.ink.Colors()
+	if len(colors) < 2 || !ink.ActiveCircuitReady(runtime.ink, active) {
+		return fmt.Errorf("ink circuit did not become ready")
+	}
+	if resuming {
+		return nil
+	}
+	return ink.RequireReady(runtime.ink, previous)
+}
+
+// inkFlushFaultOperation 模拟换墨冲洗途中出口残色测量中断：
+// 换色开阀后开始冲洗，注入一次测量故障使操作失败，本次清洗记录保留在回路里，
+// 后续 switch_ink 会沿用该记录继续冲洗而不是重新开路。
+func (runtime *Runtime) inkFlushFaultOperation() error {
+	active := runtime.inkControl.Active()
+	if active == "" {
+		if err := runtime.inkControl.Activate("cyan"); err != nil {
+			return err
+		}
+		active = "cyan"
+	}
 	next := "magenta"
 	if active == next {
 		next = "cyan"
@@ -219,14 +264,54 @@ func (runtime *Runtime) switchInkOperation(withFault bool) error {
 	if _, err := runtime.inkControl.SwitchColor(next); err != nil {
 		return err
 	}
-	if err := runtime.press.SetColor(next); err != nil {
+	if _, err := runtime.inkControl.BeginFlush(time.Now()); err != nil {
 		return err
 	}
-	colors := runtime.ink.Colors()
-	if len(colors) < 2 || !ink.ActiveCircuitReady(runtime.ink, next) {
-		return fmt.Errorf("ink circuit did not become ready")
+	if _, err := runtime.inkControl.FlushCycle(inkFlushResidual(0), runtime.config.InkFlushLimitPPM, runtime.config.InkFlushRequiredConsecutive, time.Now()); err != nil {
+		return err
 	}
-	return ink.RequireReady(runtime.ink, active)
+	runtime.inkControl.FailMeasure(fmt.Errorf("outlet residual measurement interrupted"))
+	err := runtime.flushInkCircuit()
+	runtime.RecordIncident("warning", "ink", "outlet residual measurement interrupted")
+	return err
+}
+
+// maxFlushCycles 单次换墨允许的最大冲洗循环数，超出仍未连续达标则判失败。
+const maxFlushCycles = 12
+
+// flushInkCircuit 冲洗当前回路并逐次实测出口残色，连续达到清洁条件后回路才标记可印。
+// 测量中断时本次清洗记录保留在回路状态中，后续换墨操作继续沿用。
+func (runtime *Runtime) flushInkCircuit() error {
+	if record, ok := runtime.inkControl.FlushStatus(); ok && record.Confirmed {
+		return nil
+	}
+	if _, err := runtime.inkControl.BeginFlush(time.Now()); err != nil {
+		return err
+	}
+	limit := runtime.config.InkFlushLimitPPM
+	required := runtime.config.InkFlushRequiredConsecutive
+	for cycle := 0; cycle < maxFlushCycles; cycle++ {
+		record, ok := runtime.inkControl.FlushStatus()
+		if !ok {
+			return fmt.Errorf("ink flush record is missing")
+		}
+		if record.Confirmed {
+			return nil
+		}
+		residual := inkFlushResidual(record.Cycles)
+		now := time.Now()
+		record, err := runtime.inkControl.FlushCycle(residual, limit, required, now)
+		if err != nil {
+			return err
+		}
+		runtime.sensors.PutReading(sensor.Reading{ID: string(model.NewOperationID()), Kind: sensor.ReadingColorResidual, Source: "ink-outlet-" + record.Color, Origin: "ink-outlet-" + record.Color, Value: residual, Unit: "ppm", ObservedAt: now})
+	}
+	return fmt.Errorf("ink flush did not reach cleanliness")
+}
+
+// inkFlushResidual 模拟出口残色随冲洗循环次数衰减。
+func inkFlushResidual(cycles int) float64 {
+	return 48 * math.Pow(0.5, float64(cycles))
 }
 
 func (runtime *Runtime) startDryerOperation(ctx context.Context, current model.Job) error {

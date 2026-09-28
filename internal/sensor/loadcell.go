@@ -9,9 +9,10 @@ import (
 type ReadingKind string
 
 const (
-	ReadingForce   ReadingKind = "force"
-	ReadingTension ReadingKind = "tension"
-	ReadingSpeed   ReadingKind = "speed"
+	ReadingForce         ReadingKind = "force"
+	ReadingTension       ReadingKind = "tension"
+	ReadingSpeed         ReadingKind = "speed"
+	ReadingColorResidual ReadingKind = "color_residual"
 )
 
 type Reading struct {

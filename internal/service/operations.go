@@ -44,6 +44,7 @@ func (runtime *Runtime) Equipment() []map[string]any {
 	values := []map[string]any{
 		{"name": "unwind", "roll": roll, "generation": generation, "owner": feedOwner, "speed": feedSpeed},
 		{"name": "press", "plate": plate, "generation": plateGeneration, "color": color, "phases": phases},
+		{"name": "ink", "active": runtime.inkControl.Active(), "circuits": runtime.ink.Snapshot(), "flushes": runtime.ink.FlushRecords()},
 		{"name": "dryer", "state": runtime.dryerControlStatus()},
 		{"name": "folder", "ready": ready, "speed": folderSpeed, "cut_length": cutLength, "fault": fault, "lots": lots},
 	}

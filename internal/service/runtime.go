@@ -22,10 +22,12 @@ import (
 )
 
 type Config struct {
-	DataDir           string
-	FestoonCapacity   float64
-	RegisterGap       time.Duration
-	RegisterTolerance float64
+	DataDir                     string
+	FestoonCapacity             float64
+	RegisterGap                 time.Duration
+	RegisterTolerance           float64
+	InkFlushLimitPPM            float64
+	InkFlushRequiredConsecutive int
 }
 
 type Runtime struct {
@@ -59,7 +61,7 @@ type Runtime struct {
 }
 
 func NewRuntime(config Config) (*Runtime, error) {
-	if config.DataDir == "" || config.FestoonCapacity <= 0 || config.RegisterGap <= 0 || config.RegisterTolerance <= 0 {
+	if config.DataDir == "" || config.FestoonCapacity <= 0 || config.RegisterGap <= 0 || config.RegisterTolerance <= 0 || config.InkFlushLimitPPM <= 0 || config.InkFlushRequiredConsecutive <= 0 {
 		return nil, fmt.Errorf("runtime configuration is incomplete")
 	}
 	path, err := web.NewPath([]web.Segment{{Name: "unwind", Length: 4, Tension: 8, Available: true}, {Name: "press", Length: 12, Tension: 8, Available: true}, {Name: "dryer", Length: 18, Tension: 7, Available: true}, {Name: "folder", Length: 5, Tension: 6, Available: true}})

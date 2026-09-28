@@ -23,7 +23,7 @@ func main() {
 	if dataDir == "" {
 		dataDir = "data"
 	}
-	runtime, err := service.NewRuntime(service.Config{DataDir: dataDir, FestoonCapacity: 120, RegisterGap: 500 * time.Millisecond, RegisterTolerance: 0.25})
+	runtime, err := service.NewRuntime(service.Config{DataDir: dataDir, FestoonCapacity: 120, RegisterGap: 500 * time.Millisecond, RegisterTolerance: 0.25, InkFlushLimitPPM: 30, InkFlushRequiredConsecutive: 2})
 	if err != nil {
 		log.Fatal(err)
 	}

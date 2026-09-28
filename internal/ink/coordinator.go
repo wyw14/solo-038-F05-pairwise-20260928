@@ -3,6 +3,7 @@ package ink
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Transition struct {
@@ -58,4 +59,54 @@ func (coordinator *Coordinator) Active() string {
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()
 	return coordinator.active
+}
+
+// BeginFlush 开始或继续当前回路的冲洗。
+func (coordinator *Coordinator) BeginFlush(now time.Time) (FlushRecord, error) {
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	if coordinator.active == "" {
+		return FlushRecord{}, fmt.Errorf("no ink color is active")
+	}
+	return coordinator.circuit.BeginFlush(coordinator.active, now)
+}
+
+// FlushCycle 对当前回路执行一次冲洗循环并记录出口残色实测。
+func (coordinator *Coordinator) FlushCycle(residualPPM, limitPPM float64, required int, now time.Time) (FlushRecord, error) {
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	if coordinator.active == "" {
+		return FlushRecord{}, fmt.Errorf("no ink color is active")
+	}
+	return coordinator.circuit.FlushCycle(coordinator.active, residualPPM, limitPPM, required, now)
+}
+
+// PauseFlush 暂停当前回路的冲洗，保留本次清洗记录。
+func (coordinator *Coordinator) PauseFlush(now time.Time) error {
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	if coordinator.active == "" {
+		return fmt.Errorf("no ink color is active")
+	}
+	return coordinator.circuit.PauseFlush(coordinator.active, now)
+}
+
+// FailMeasure 让当前回路的下一次出口残色实测失败一次（模拟测量中断）。
+func (coordinator *Coordinator) FailMeasure(err error) {
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	if coordinator.active == "" {
+		return
+	}
+	coordinator.circuit.FailMeasure(coordinator.active, err)
+}
+
+// FlushStatus 返回当前回路的本次清洗记录。
+func (coordinator *Coordinator) FlushStatus() (FlushRecord, bool) {
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	if coordinator.active == "" {
+		return FlushRecord{}, false
+	}
+	return coordinator.circuit.state.FlushRecord(coordinator.active)
 }
